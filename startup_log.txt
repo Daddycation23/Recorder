@@ -1,0 +1,32 @@
+Application starting4/12/2025 3:29:26 AM: OnStartup called
+4/12/2025 3:29:26 AM: Base.OnStartup completed
+4/12/2025 3:30:16 AM: OnStartup called
+4/12/2025 3:30:16 AM: Base.OnStartup completed
+4/12/2025 3:30:16 AM: MainWindow created
+4/12/2025 3:30:16 AM: MainWindow property set
+4/12/2025 3:30:16 AM: MainWindow.Show called
+4/12/2025 3:30:48 AM: OnStartup called
+4/12/2025 3:30:48 AM: Base.OnStartup completed
+4/12/2025 3:30:49 AM: MainWindow created
+4/12/2025 3:30:49 AM: MainWindow property set
+4/12/2025 3:30:49 AM: MainWindow.Show called
+4/12/2025 3:32:04 AM: OnStartup called
+4/12/2025 3:32:04 AM: Base.OnStartup completed
+4/12/2025 3:33:20 AM: OnStartup called
+4/12/2025 3:33:20 AM: Base.OnStartup completed
+4/12/2025 3:35:14 AM: OnStartup called
+4/12/2025 3:35:14 AM: Base.OnStartup completed
+4/12/2025 3:35:26 AM: OnStartup called
+4/12/2025 3:35:26 AM: Base.OnStartup completed
+4/12/2025 3:37:45 AM: OnStartup called
+4/12/2025 3:37:45 AM: Base.OnStartup completed
+4/12/2025 3:38:14 AM: OnStartup called
+4/12/2025 3:38:14 AM: Base.OnStartup completed
+4/12/2025 3:39:36 AM: OnStartup called
+4/12/2025 3:39:36 AM: Base.OnStartup completed
+4/12/2025 3:42:06 AM: OnStartup called
+4/12/2025 3:42:06 AM: Base.OnStartup completed
+4/12/2025 3:43:49 AM: OnStartup called
+4/12/2025 3:43:49 AM: Base.OnStartup completed
+4/12/2025 3:45:18 AM: OnStartup called
+4/12/2025 3:45:18 AM: Base.OnStartup completed

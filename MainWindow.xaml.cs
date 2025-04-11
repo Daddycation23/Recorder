@@ -60,6 +60,70 @@ public class RecordingInfo : INotifyPropertyChanged
 
     public string FileName => System.IO.Path.GetFileName(FilePath);
 
+    // Added metadata properties
+    private string _artistTag = string.Empty;
+    public string ArtistTag
+    {
+        get => _artistTag;
+        set
+        {
+            if (_artistTag != value)
+            {
+                _artistTag = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    private string _albumTag = string.Empty;
+    public string AlbumTag
+    {
+        get => _albumTag;
+        set
+        {
+            if (_albumTag != value)
+            {
+                _albumTag = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    private TimeSpan _duration = TimeSpan.Zero;
+    public TimeSpan Duration
+    {
+        get => _duration;
+        set
+        {
+            if (_duration != value)
+            {
+                _duration = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(DurationString));
+            }
+        }
+    }
+
+    public string DurationString => Duration.TotalSeconds < 1 ? "--:--" : 
+                                  $"{(int)Duration.TotalMinutes:00}:{Duration.Seconds:00}";
+
+    private DateTime _dateAdded = DateTime.Now;
+    public DateTime DateAdded
+    {
+        get => _dateAdded;
+        set
+        {
+            if (_dateAdded != value)
+            {
+                _dateAdded = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(DateAddedString));
+            }
+        }
+    }
+
+    public string DateAddedString => DateAdded.ToString("MM/dd/yyyy HH:mm");
+
     public event PropertyChangedEventHandler? PropertyChanged;
 
     protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
@@ -120,12 +184,33 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     public MainWindow()
     {
-        InitializeComponent();
-        this.Closing += MainWindow_Closing;
-        this.DataContext = this;
-        RefreshAudioApplications();
-        SetupPlaybackMonitorTimer();
-        LoadHistory();
+        try
+        {
+            InitializeComponent();
+            
+            this.Loaded += (s, e) => 
+            {
+                try 
+                {
+                    // Move initialization to the Loaded event
+                    this.Closing += MainWindow_Closing;
+                    this.DataContext = this;
+                    
+                    // Call these methods after the window is loaded
+                    RefreshAudioApplications();
+                    SetupPlaybackMonitorTimer();
+                    LoadHistory();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Error during window initialization: {ex.Message}", "Initialization Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            };
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Error creating window: {ex.Message}", "Window Creation Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     private void SetupPlaybackMonitorTimer()
@@ -139,148 +224,154 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         _playbackMonitorTimer?.Stop();
 
-        AppComboBox.Items.Clear();
-        _mutedSessions = new Dictionary<int, bool>();
-
-        List<AudioSessionInfo> sessions = new List<AudioSessionInfo>();
-        try
+        if (AppComboBox != null)
         {
-            using var enumerator = new MMDeviceEnumerator();
-            using var device = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
-            if (device == null) 
-            {
-                Debug.WriteLine("Error: Default audio endpoint not found.");
-                return;
-            }
+            AppComboBox.Items.Clear();
+            _mutedSessions = new Dictionary<int, bool>();
 
-            var sessionManager = device.AudioSessionManager;
-            if (sessionManager?.Sessions == null) 
+            List<AudioSessionInfo> sessions = new List<AudioSessionInfo>();
+            try
             {
-                Debug.WriteLine("Error: Could not get AudioSessionManager or Sessions collection.");
-                return;
-            }
-
-            for (int i = 0; i < sessionManager.Sessions.Count; i++)
-            {
-                AudioSessionControl? session = null;
-                try
+                using var enumerator = new MMDeviceEnumerator();
+                using var device = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+                if (device == null) 
                 {
-                    session = sessionManager.Sessions[i];
-                    if (session == null) continue;
+                    Debug.WriteLine("Error: Default audio endpoint not found.");
+                    return;
+                }
 
-                    int processId = 0;
-                    AudioSessionState sessionState = AudioSessionState.AudioSessionStateExpired;
-                    bool sessionInfoError = false;
+                var sessionManager = device.AudioSessionManager;
+                if (sessionManager?.Sessions == null) 
+                {
+                    Debug.WriteLine("Error: Could not get AudioSessionManager or Sessions collection.");
+                    return;
+                }
 
-                    // --- Try getting Process ID --- 
+                for (int i = 0; i < sessionManager.Sessions.Count; i++)
+                {
+                    AudioSessionControl? session = null;
                     try
                     {
-                        processId = (int)session.GetProcessID;
-                        if (processId == 0) continue; // Skip system sounds process
-                    }
-                    catch (Exception pidEx)
-                    {
-                         Debug.WriteLine($"Error getting ProcessID for session index {i}: {pidEx.Message}");
-                         sessionInfoError = true;
-                    }
-                    if (sessionInfoError) continue;
-                    // -----------------------------
+                        session = sessionManager.Sessions[i];
+                        if (session == null) continue;
 
-                    // --- Try getting Session State --- 
-                    try 
-                    {
-                         sessionState = session.State; 
-                    }
-                    catch (Exception stateEx)
-                    {
-                        Debug.WriteLine($"Error getting State for session index {i} (PID: {processId}): {stateEx.Message}");
-                        sessionInfoError = true;
-                    }
-                    if (sessionInfoError) continue;
-                    // ------------------------------
+                        int processId = 0;
+                        AudioSessionState sessionState = AudioSessionState.AudioSessionStateExpired;
+                        bool sessionInfoError = false;
 
-                    // Wrap process access in its own try-catch
-                    Process? process = null;
-                    try
-                    {
-                        process = Process.GetProcessById(processId); // Can throw if process exited
-                        if (process == null || string.IsNullOrWhiteSpace(process.ProcessName))
+                        // --- Try getting Process ID --- 
+                        try
                         {
-                             process?.Dispose();
-                             continue;
+                            processId = (int)session.GetProcessID;
+                            if (processId == 0) continue; // Skip system sounds process
                         }
-                        
-                        // Check session state (already retrieved)
-                        if (sessionState == AudioSessionState.AudioSessionStateActive || sessionState == AudioSessionState.AudioSessionStateInactive)
+                        catch (Exception pidEx)
                         {
-                             if (!sessions.Any(s => s.ProcessId == processId))
-                             {
-                                var sessionInfo = new AudioSessionInfo
-                                {
-                                    ProcessId = processId,
-                                    ProcessName = process.ProcessName,
-                                    IconSource = GetIconForProcess(processId) // <-- Re-enable icon fetching
-                                    // IconSource = null // Set to null for now
-                                };
-                                sessions.Add(sessionInfo);
-                             }
+                             Debug.WriteLine($"Error getting ProcessID for session index {i}: {pidEx.Message}");
+                             sessionInfoError = true;
+                        }
+                        if (sessionInfoError) continue;
+                        // -----------------------------
+
+                        // --- Try getting Session State --- 
+                        try 
+                        {
+                             sessionState = session.State; 
+                        }
+                        catch (Exception stateEx)
+                        {
+                            Debug.WriteLine($"Error getting State for session index {i} (PID: {processId}): {stateEx.Message}");
+                            sessionInfoError = true;
+                        }
+                        if (sessionInfoError) continue;
+                        // ------------------------------
+
+                        // Wrap process access in its own try-catch
+                        Process? process = null;
+                        try
+                        {
+                            process = Process.GetProcessById(processId); // Can throw if process exited
+                            if (process == null || string.IsNullOrWhiteSpace(process.ProcessName))
+                            {
+                                 process?.Dispose();
+                                 continue;
+                            }
+                            
+                            // Check session state (already retrieved)
+                            if (sessionState == AudioSessionState.AudioSessionStateActive || sessionState == AudioSessionState.AudioSessionStateInactive)
+                            {
+                                 if (!sessions.Any(s => s.ProcessId == processId))
+                                 {
+                                    var sessionInfo = new AudioSessionInfo
+                                    {
+                                        ProcessId = processId,
+                                        ProcessName = process.ProcessName,
+                                        IconSource = GetIconForProcess(processId)
+                                    };
+                                    sessions.Add(sessionInfo);
+                                 }
+                            }
+                        }
+                        catch (ArgumentException argEx) // Process likely exited
+                        {
+                             Debug.WriteLine($"ArgumentException getting process {processId} (likely exited): {argEx.Message}");
+                        }
+                        catch (InvalidOperationException invEx) // Process likely exited or no access
+                        {
+                            Debug.WriteLine($"InvalidOperationException getting process {processId} (likely exited/no access): {invEx.Message}");
+                        }
+                        finally
+                        {
+                            process?.Dispose();
                         }
                     }
-                    catch (ArgumentException argEx) // Process likely exited
+                    catch (Exception ex)
                     {
-                         Debug.WriteLine($"ArgumentException getting process {processId} (likely exited): {argEx.Message}");
-                    }
-                    catch (InvalidOperationException invEx) // Process likely exited or no access
-                    {
-                        Debug.WriteLine($"InvalidOperationException getting process {processId} (likely exited/no access): {invEx.Message}");
+                        // Catch errors getting session info or PID
+                        Debug.WriteLine($"Error processing session index {i}: {ex.Message}");
                     }
                     finally
                     {
-                        process?.Dispose();
+                        session?.Dispose(); // Dispose session control COM object
                     }
                 }
-                catch (Exception ex)
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error enumerating audio sessions: {ex.Message}");
+            }
+
+            sessions = sessions.OrderBy(s => s.ProcessName).ToList();
+
+            foreach(var sessionInfo in sessions)
+            {
+                 AppComboBox.Items.Add(sessionInfo);
+            }
+
+            if (AppComboBox.Items.Count > 0)
+            {
+                 AppComboBox.SelectedIndex = 0;
+            }
+            else
+            {
+                if (AutoStartCheckBox != null)
                 {
-                    // Catch errors getting session info or PID
-                    Debug.WriteLine($"Error processing session index {i}: {ex.Message}");
+                    AutoStartCheckBox.IsChecked = false;
+                    AutoStartCheckBox.IsEnabled = false;
                 }
-                finally
+                if (StartButton != null)
                 {
-                    session?.Dispose(); // Dispose session control COM object
+                    StartButton.IsEnabled = false;
                 }
             }
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"Error enumerating audio sessions: {ex.Message}");
-        }
 
-        sessions = sessions.OrderBy(s => s.ProcessName).ToList();
+            Debug.WriteLine($"Found {AppComboBox.Items.Count} applications with audio sessions.");
 
-        foreach(var sessionInfo in sessions)
-        {
-             AppComboBox.Items.Add(sessionInfo);
-        }
-
-        AppComboBox.DisplayMemberPath = "DisplayName";
-
-        if (AppComboBox.Items.Count > 0)
-        {
-             AppComboBox.SelectedIndex = 0;
-        }
-        else
-        {
-            AutoStartCheckBox.IsChecked = false;
-            AutoStartCheckBox.IsEnabled = false;
-            StartButton.IsEnabled = false;
-        }
-
-        Debug.WriteLine($"Found {AppComboBox.Items.Count} applications with audio sessions.");
-
-        if (AutoStartCheckBox.IsChecked == true && AppComboBox.SelectedItem != null)
-        {
-            _lastMonitoredSessionState = GetCurrentSessionState(((AudioSessionInfo)AppComboBox.SelectedItem).ProcessId);
-            _playbackMonitorTimer?.Start();
+            if (AutoStartCheckBox?.IsChecked == true && AppComboBox.SelectedItem != null)
+            {
+                _lastMonitoredSessionState = GetCurrentSessionState(((AudioSessionInfo)AppComboBox.SelectedItem).ProcessId);
+                _playbackMonitorTimer?.Start();
+            }
         }
     }
 
@@ -702,8 +793,19 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void StartButton_Click(object sender, RoutedEventArgs e)
     {
-        _playbackMonitorTimer?.Stop();
-        StartRecording();
+        if (_isRecording)
+        {
+            StopRecording();
+        }
+        else if (AppComboBox?.SelectedItem is AudioSessionInfo selectedSession)
+        {
+            StartRecording();
+        }
+        else
+        {
+            MessageBox.Show("Please select an application to record.", "No Application Selected", 
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 
     private void StopButton_Click(object sender, RoutedEventArgs e)
@@ -719,130 +821,216 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void SaveButton_Click(object sender, RoutedEventArgs e)
     {
-        if (RecordingsListView.SelectedItem is RecordingInfo selectedRecording)
+        // Make sure a recording is selected
+        if (RecordingsListView.SelectedItem is not RecordingInfo selectedRecording) return;
+
+        string recordingFormat = GetSelectedFormat();
+        string formatExtension = recordingFormat.ToLower();
+        if (formatExtension == "mp3 automatic" || formatExtension == "mp3 320kbps") formatExtension = "mp3";
+
+        SaveFileDialog saveFileDialog = new SaveFileDialog
         {
-            if (!System.IO.File.Exists(selectedRecording.FilePath))
-            {
-                 MessageBox.Show($"The temporary file for this recording no longer exists:\n{selectedRecording.FilePath}", "Temporary File Missing", MessageBoxButton.OK, MessageBoxImage.Warning);
-                 FinishedRecordings.Remove(selectedRecording);
-                 return;
-            }
+            Filter = $"{recordingFormat} Files|*.{formatExtension}|All Files|*.*",
+            DefaultExt = formatExtension,
+            FileName = System.IO.Path.GetFileNameWithoutExtension(selectedRecording.FileName) // Use existing filename without extension
+        };
 
-            // --- Set SaveFileDialog Filter based on recording format --- 
-            string fileFilter;
-            string defaultExt;
-            if (selectedRecording.RecordingFormat.Equals("WAV", StringComparison.OrdinalIgnoreCase))
-            {
-                fileFilter = "WAV Audio File (*.wav)|*.wav";
-                defaultExt = ".wav";
-            }
-            else if (selectedRecording.RecordingFormat.Equals("FLAC", StringComparison.OrdinalIgnoreCase)) // <-- Add FLAC filter case
-            {
-                 fileFilter = "FLAC Audio File (*.flac)|*.flac";
-                 defaultExt = ".flac";
-            }
-            else // Default to MP3
-            {
-                 fileFilter = "MP3 Audio File (*.mp3)|*.mp3";
-                 defaultExt = ".mp3";
-            }
-            // ----------------------------------------------------------
+        bool? dialogResult = saveFileDialog.ShowDialog();
+        if (dialogResult != true) return; // User cancelled
 
-            string initialDirectory = System.IO.Path.GetDirectoryName(selectedRecording.FilePath) ?? Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-            // Ensure suggested filename has the correct extension
-            string initialFileName = System.IO.Path.ChangeExtension(System.IO.Path.GetFileName(selectedRecording.FilePath), defaultExt);
+        string targetFilePath = saveFileDialog.FileName;
 
-            SaveFileDialog saveFileDialog = new SaveFileDialog();
-            saveFileDialog.Filter = fileFilter;
-            saveFileDialog.Title = "Save Recording As...";
-            saveFileDialog.InitialDirectory = initialDirectory;
-            saveFileDialog.FileName = initialFileName; 
-            saveFileDialog.DefaultExt = defaultExt;
+        try
+        {
+            // Copy the file
+            bool success = true;
+            string sourceFile = selectedRecording.FilePath;
 
-            if (saveFileDialog.ShowDialog() == true)
+            if (System.IO.File.Exists(sourceFile))
             {
-                string destinationPath = saveFileDialog.FileName;
-                try
+                // Determine if format conversion is needed
+                string sourceExt = System.IO.Path.GetExtension(sourceFile).ToLowerInvariant();
+                string targetExt = System.IO.Path.GetExtension(targetFilePath).ToLowerInvariant();
+
+                // Check if merge is requested
+                if (MergeCheckBox.IsChecked == true && RecordingsListView.Items.Count > 1)
                 {
-                    System.IO.File.Move(selectedRecording.FilePath, destinationPath, true);
-                    Debug.WriteLine($"Moved {selectedRecording.FilePath} to {destinationPath}");
+                    MessageBox.Show("Merging files functionality will be implemented in a future update.", 
+                                    "Feature Not Available", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
 
-                    // --- Write ID3 Tags --- 
-                    try
+                // Get metadata - use existing if available, otherwise default to empty
+                string title = selectedRecording.ArtistTag ?? string.Empty;
+                string artist = selectedRecording.ArtistTag ?? string.Empty; 
+                string album = selectedRecording.AlbumTag ?? string.Empty;
+
+                // These will still be available for backward compatibility
+                if (string.IsNullOrEmpty(title) && TitleTextBox != null) title = TitleTextBox.Text;
+                if (string.IsNullOrEmpty(artist) && ArtistTextBox != null) artist = ArtistTextBox.Text;
+                if (string.IsNullOrEmpty(album) && AlbumTextBox != null) album = AlbumTextBox.Text;
+
+                // Handle MP3 format with specific bitrate
+                if (recordingFormat.Contains("320kbps") && sourceExt != targetExt)
+                {
+                    // Implement conversion to MP3 with 320kbps bitrate
+                    using (var reader = new AudioFileReader(sourceFile))
+                    using (var writer = new LameMP3FileWriter(targetFilePath, reader.WaveFormat, 320))
                     {
-                        // Read tag values from UI (ensure this runs on UI thread if needed, though likely okay here)
-                        string title = TitleTextBox.Text;
-                        string artist = ArtistTextBox.Text;
-                        string album = AlbumTextBox.Text;
-
-                        // Use TagLib# to write tags
-                        using (var tagFile = TagLib.File.Create(destinationPath))
+                        reader.CopyTo(writer);
+                    }
+                }
+                // Format conversion needed
+                else if (sourceExt != targetExt)
+                {
+                    if (targetExt == ".flac")
+                    {
+                        // For FLAC, we need a special conversion
+                        ConvertToFlacAsync(selectedRecording).GetAwaiter().GetResult();
+                        success = true; // Assume success if no exception thrown
+                    }
+                    else
+                    {
+                        // Default conversion using NAudio
+                        using (var reader = new AudioFileReader(sourceFile))
                         {
-                            if (!string.IsNullOrWhiteSpace(title))
-                                tagFile.Tag.Title = title;
-                            if (!string.IsNullOrWhiteSpace(artist))
-                                tagFile.Tag.Performers = new[] { artist }; // Performers is string[]
-                            if (!string.IsNullOrWhiteSpace(album))
-                                tagFile.Tag.Album = album;
-
-                            tagFile.Save();
-                             Debug.WriteLine("Successfully wrote tags to file.");
+                            if (targetExt == ".mp3")
+                            {
+                                using var writer = new LameMP3FileWriter(targetFilePath, reader.WaveFormat, 192); // Default to 192kbps
+                                reader.CopyTo(writer);
+                            }
+                            else if (targetExt == ".wav")
+                            {
+                                using var writer = new WaveFileWriter(targetFilePath, reader.WaveFormat);
+                                reader.CopyTo(writer);
+                            }
                         }
                     }
-                    catch (UnsupportedFormatException ex) 
-                    {
-                        Debug.WriteLine($"TagLib#: Format not supported for tagging: {destinationPath} - {ex.Message}");
-                        // Inform user? Or just skip silently? For now, log it.
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"Error writing tags to {destinationPath}: {ex.Message}");
-                        // Don't let tagging error stop the process, but log it.
-                        MessageBox.Show($"Recording saved, but an error occurred while writing tags:\n{ex.Message}", "Tagging Error", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    }
-                    // ----------------------
-
-                    // Add to History (RecordingFormat is already set)
-                    var savedInfo = new RecordingInfo { FilePath = destinationPath, RecordingFormat = selectedRecording.RecordingFormat };
-                    SavedRecordings.Add(savedInfo);
-                    FinishedRecordings.Remove(selectedRecording);
-
-                    // Clear tag fields after successful save
-                    TitleTextBox.Text = string.Empty;
-                    ArtistTextBox.Text = string.Empty;
-                    AlbumTextBox.Text = string.Empty;
-
-                    MessageBox.Show($"Recording saved successfully to:\n{destinationPath}", "Save Successful", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
-                catch (Exception ex)
+                else
                 {
-                    Debug.WriteLine($"Error moving file {selectedRecording.FilePath} to {destinationPath}: {ex.Message}");
-                    MessageBox.Show($"Failed to save the file.\nError: {ex.Message}", "Save Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    // Just copy the file if no conversion needed
+                    System.IO.File.Copy(sourceFile, targetFilePath, true);
+                }
+
+                if (success)
+                {
+                    // Set ID3 tags if MP3, or other metadata for WAV/FLAC
+                    try
+                    {
+                        using (var tagFile = TagLib.File.Create(targetFilePath))
+                        {
+                            tagFile.Tag.Title = title;
+                            tagFile.Tag.Performers = new[] { artist };
+                            tagFile.Tag.Album = album;
+                            tagFile.Save();
+                        }
+                    }
+                    catch (Exception tagEx)
+                    {
+                        Debug.WriteLine($"Failed to write tags: {tagEx.Message}");
+                    }
+
+                    // Create a record for the history
+                    RecordingInfo savedRecording = new RecordingInfo
+                    {
+                        FilePath = targetFilePath,
+                        RecordingFormat = recordingFormat
+                    };
+
+                    // Add to saved recordings and update history file
+                    SavedRecordings.Add(savedRecording);
+                    SaveHistory();
+
+                    MessageBox.Show("File saved successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+                    
+                    // Clear any input fields
+                    if (TitleTextBox != null) TitleTextBox.Text = string.Empty;
+                    if (ArtistTextBox != null) ArtistTextBox.Text = string.Empty;
+                    if (AlbumTextBox != null) AlbumTextBox.Text = string.Empty;
+                }
+                else
+                {
+                    MessageBox.Show("There was an error saving the file.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
             else
             {
-                 Debug.WriteLine("Save file dialog cancelled by user.");
+                MessageBox.Show("Source file not found.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
-        else
+        catch (Exception ex)
         {
-             MessageBox.Show("Please select a recording from the list to save.", "No Recording Selected", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show($"Error: {ex.Message}", "Error Saving File", MessageBoxButton.OK, MessageBoxImage.Error);
         }
+    }
+
+    // Helper method to get the selected format 
+    private string GetSelectedFormat()
+    {
+        if (FormatComboBox.SelectedItem is ComboBoxItem selectedItem)
+        {
+            return selectedItem.Content.ToString() ?? "MP3 Automatic";
+        }
+        return "MP3 Automatic"; // Default
     }
 
     private void UpdateUI()
     {
-        Application.Current.Dispatcher.Invoke(() =>
+        bool controlsEnabled = !_isRecording;
+        
+        // Update controls state based on recording state
+        if (StartButton != null)
         {
-            bool controlsEnabled = !_isRecording;
-            StartButton.IsEnabled = controlsEnabled && AppComboBox.SelectedItem != null;
-            AppComboBox.IsEnabled = controlsEnabled;
-            RefreshAppsButton.IsEnabled = controlsEnabled;
-            AutoStartCheckBox.IsEnabled = controlsEnabled && AppComboBox.SelectedItem != null;
-
+            StartButton.Content = _isRecording ? "Stop" : "Start";
+            StartButton.IsEnabled = (AppComboBox?.SelectedItem != null) || _isRecording;
+        }
+        
+        // Hide Stop button in the new UI as Start/Stop has been combined
+        if (StopButton != null)
+        {
             StopButton.IsEnabled = _isRecording;
-        });
+        }
+        
+        // App selection should be disabled during recording
+        if (AppComboBox != null)
+        {
+            AppComboBox.IsEnabled = controlsEnabled;
+        }
+        
+        // Update hidden controls for backward compatibility
+        if (RefreshAppsButton != null)
+        {
+            RefreshAppsButton.IsEnabled = controlsEnabled;
+        }
+        
+        if (AutoStartCheckBox != null)
+        {
+            AutoStartCheckBox.IsEnabled = controlsEnabled && (AppComboBox?.SelectedItem != null);
+            // Ensure AutoStart is unchecked if no app is selected
+            if (AppComboBox?.SelectedItem == null && AutoStartCheckBox.IsChecked == true)
+            {
+                AutoStartCheckBox.IsChecked = false;
+            }
+        }
+        
+        // In the new UI, the Format ComboBox should be disabled during recording
+        if (FormatComboBox != null)
+        {
+            FormatComboBox.IsEnabled = controlsEnabled;
+        }
+        
+        // MergeCheckbox should be disabled during recording
+        if (MergeCheckBox != null)
+        {
+            MergeCheckBox.IsEnabled = controlsEnabled;
+        }
+        
+        // Save button should be enabled only when a recording is selected and not recording
+        if (SaveButton != null) 
+        {
+            SaveButton.IsEnabled = controlsEnabled && RecordingsListView.SelectedItem != null;
+        }
     }
 
     // --- Navigation Tab Handlers ---

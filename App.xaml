@@ -4,6 +4,141 @@
              xmlns:local="clr-namespace:Recorder"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
-         
+         <ResourceDictionary>
+            <!-- Define Colors -->
+            <SolidColorBrush x:Key="PrimaryBackgroundBrush" Color="#F5F5F5"/>
+            <SolidColorBrush x:Key="SecondaryBackgroundBrush" Color="#FFFFFF"/>
+            <SolidColorBrush x:Key="BorderBrush" Color="#D0D0D0"/>
+            <SolidColorBrush x:Key="PrimaryAccentBrush" Color="#007ACC"/>
+            <SolidColorBrush x:Key="TextBrush" Color="#333333"/>
+            <SolidColorBrush x:Key="ButtonHoverBrush" Color="#E0E0E0"/>
+            <SolidColorBrush x:Key="ButtonPressedBrush" Color="#C0C0C0"/>
+            <SolidColorBrush x:Key="SidebarBackgroundBrush" Color="#EAEAEA"/>
+
+            <!-- Base Style for Controls -->
+            <Style TargetType="Control">
+                <Setter Property="FontFamily" Value="Segoe UI"/>
+                <Setter Property="FontSize" Value="13"/>
+                <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            </Style>
+
+            <!-- Button Style -->
+            <Style TargetType="Button" BasedOn="{StaticResource {x:Type Control}}">
+                <Setter Property="Background" Value="{StaticResource PrimaryBackgroundBrush}"/>
+                <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Padding" Value="10,5"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="border" 
+                                    Background="{TemplateBinding Background}" 
+                                    BorderBrush="{TemplateBinding BorderBrush}" 
+                                    BorderThickness="{TemplateBinding BorderThickness}" 
+                                    CornerRadius="3">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="border" Property="Background" Value="{StaticResource ButtonHoverBrush}"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="border" Property="Background" Value="{StaticResource ButtonPressedBrush}"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Opacity" Value="0.5"/>
+                                    <Setter Property="Cursor" Value="No"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- Style for RadioButton as Tab -->
+            <Style x:Key="SidebarTabRadioButton" TargetType="RadioButton" BasedOn="{StaticResource {x:Type Control}}">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderBrush" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Padding" Value="10,8"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="HorizontalAlignment" Value="Stretch"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="RadioButton">
+                            <Border x:Name="border" 
+                                    Background="{TemplateBinding Background}" 
+                                    BorderBrush="{TemplateBinding BorderBrush}" 
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="border" Property="Background" Value="{StaticResource ButtonHoverBrush}"/>
+                                </Trigger>
+                                <Trigger Property="IsChecked" Value="True">
+                                    <Setter TargetName="border" Property="Background" Value="{StaticResource ButtonPressedBrush}"/>
+                                    <Setter Property="FontWeight" Value="SemiBold"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Opacity" Value="0.5"/>
+                                     <Setter Property="Cursor" Value="No"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- ComboBox Style -->
+            <Style TargetType="ComboBox" BasedOn="{StaticResource {x:Type Control}}">
+                <Setter Property="Padding" Value="5,4"/>
+                <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Background" Value="{StaticResource SecondaryBackgroundBrush}"/>
+            </Style>
+
+             <!-- TextBox Style -->
+             <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type Control}}">
+                <Setter Property="Padding" Value="5,4"/>
+                <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Background" Value="{StaticResource SecondaryBackgroundBrush}"/>
+                <Setter Property="Validation.ErrorTemplate" Value="{x:Null}"/> <!-- Optional: Remove default red error border -->
+            </Style>
+
+            <!-- ListView Style -->
+            <Style TargetType="ListView" BasedOn="{StaticResource {x:Type Control}}">
+                <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Background" Value="{StaticResource SecondaryBackgroundBrush}"/>
+            </Style>
+
+            <!-- ListViewItem Style -->
+            <Style TargetType="ListViewItem">
+                 <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                 <Setter Property="Padding" Value="5,3"/>
+                 <Style.Triggers>
+                    <Trigger Property="IsSelected" Value="True">
+                        <Setter Property="Background" Value="{StaticResource PrimaryAccentBrush}"/>
+                        <Setter Property="Foreground" Value="{StaticResource SecondaryBackgroundBrush}"/>
+                    </Trigger>
+                    <Trigger Property="IsMouseOver" Value="True">
+                         <Setter Property="Background" Value="{StaticResource ButtonHoverBrush}"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+
+            <!-- ProgressBar Style -->
+             <Style TargetType="ProgressBar">
+                 <Setter Property="Foreground" Value="{StaticResource PrimaryAccentBrush}"/>
+                 <Setter Property="Background" Value="{StaticResource ButtonHoverBrush}"/>
+                 <Setter Property="BorderThickness" Value="0"/>
+                 <Setter Property="Height" Value="8"/>
+             </Style>
+
+         </ResourceDictionary>
     </Application.Resources>
 </Application>

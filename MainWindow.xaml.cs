@@ -8,6 +8,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -23,6 +24,11 @@ using NAudio.Wave;
 using NAudio.CoreAudioApi;
 using NAudio.Lame;
 using NAudio.CoreAudioApi.Interfaces;
+using TagLib;
+using System.Threading.Tasks;
+using System.Text.RegularExpressions;
+using System.Drawing; // For Icon
+using System.Windows.Interop; // For Imaging
 
 namespace Recorder;
 
@@ -31,6 +37,7 @@ public class AudioSessionInfo
     public int ProcessId { get; set; }
     public string? ProcessName { get; set; }
     public string DisplayName => $"{ProcessName ?? "Unknown"} (PID: {ProcessId})";
+    public ImageSource? IconSource { get; set; } // Property to hold the icon
 }
 
 // Class to hold information about a finished recording
@@ -68,6 +75,14 @@ public class RecordingInfo : INotifyPropertyChanged
 /// </summary>
 public partial class MainWindow : Window, INotifyPropertyChanged
 {
+    // --- History File ---
+    private const string HistoryFileName = "recording_history.json";
+    private static readonly string HistoryFilePath = System.IO.Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "AudioRecorderApp", // App-specific folder
+        HistoryFileName);
+    // --------------------
+
     private WasapiLoopbackCapture? _capture;
     private LameMP3FileWriter? _mp3Writer;
     private WaveFileWriter? _wavWriter;
@@ -101,6 +116,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public ObservableCollection<RecordingInfo> SavedRecordings { get; } = new ObservableCollection<RecordingInfo>();
     // -------------------------------------------------
 
+    private string _recordingFormatForCurrentFile = "MP3"; // Store the intended final format
+
     public MainWindow()
     {
         InitializeComponent();
@@ -108,7 +125,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         this.DataContext = this;
         RefreshAudioApplications();
         SetupPlaybackMonitorTimer();
-        // TODO: Load history from storage?
+        LoadHistory();
     }
 
     private void SetupPlaybackMonitorTimer()
@@ -130,48 +147,107 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             using var enumerator = new MMDeviceEnumerator();
             using var device = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
-            if (device == null) return;
+            if (device == null) 
+            {
+                Debug.WriteLine("Error: Default audio endpoint not found.");
+                return;
+            }
 
             var sessionManager = device.AudioSessionManager;
-            if (sessionManager?.Sessions == null) return;
+            if (sessionManager?.Sessions == null) 
+            {
+                Debug.WriteLine("Error: Could not get AudioSessionManager or Sessions collection.");
+                return;
+            }
 
             for (int i = 0; i < sessionManager.Sessions.Count; i++)
             {
-                using var session = sessionManager.Sessions[i];
-                if (session == null) continue;
-
+                AudioSessionControl? session = null;
                 try
                 {
-                    var processId = (int)session.GetProcessID;
-                    if (processId == 0) continue; // Skip system sounds process
-                    
-                    // --- Added Debugging --- 
-                    string processName = "<Error getting name>";
-                    try { processName = Process.GetProcessById(processId)?.ProcessName ?? "<Name was null>"; } catch {}
-                    Debug.WriteLine($"Found Session: PID={processId}, Name={processName}, State={session.State}");
-                    // ----------------------
+                    session = sessionManager.Sessions[i];
+                    if (session == null) continue;
 
-                    var process = Process.GetProcessById(processId);
+                    int processId = 0;
+                    AudioSessionState sessionState = AudioSessionState.AudioSessionStateExpired;
+                    bool sessionInfoError = false;
 
-                    // --- Modified State Check ---
-                    if (process != null && 
-                        !string.IsNullOrWhiteSpace(process.ProcessName) && 
-                        (session.State == AudioSessionState.AudioSessionStateActive || session.State == AudioSessionState.AudioSessionStateInactive))
-                    // -------------------------
+                    // --- Try getting Process ID --- 
+                    try
                     {
-                         if (!sessions.Any(s => s.ProcessId == processId))
-                         {
-                            sessions.Add(new AudioSessionInfo
-                            {
-                                ProcessId = processId,
-                                ProcessName = process.ProcessName
-                            });
-                         }
+                        processId = (int)session.GetProcessID;
+                        if (processId == 0) continue; // Skip system sounds process
                     }
-                    process?.Dispose();
+                    catch (Exception pidEx)
+                    {
+                         Debug.WriteLine($"Error getting ProcessID for session index {i}: {pidEx.Message}");
+                         sessionInfoError = true;
+                    }
+                    if (sessionInfoError) continue;
+                    // -----------------------------
+
+                    // --- Try getting Session State --- 
+                    try 
+                    {
+                         sessionState = session.State; 
+                    }
+                    catch (Exception stateEx)
+                    {
+                        Debug.WriteLine($"Error getting State for session index {i} (PID: {processId}): {stateEx.Message}");
+                        sessionInfoError = true;
+                    }
+                    if (sessionInfoError) continue;
+                    // ------------------------------
+
+                    // Wrap process access in its own try-catch
+                    Process? process = null;
+                    try
+                    {
+                        process = Process.GetProcessById(processId); // Can throw if process exited
+                        if (process == null || string.IsNullOrWhiteSpace(process.ProcessName))
+                        {
+                             process?.Dispose();
+                             continue;
+                        }
+                        
+                        // Check session state (already retrieved)
+                        if (sessionState == AudioSessionState.AudioSessionStateActive || sessionState == AudioSessionState.AudioSessionStateInactive)
+                        {
+                             if (!sessions.Any(s => s.ProcessId == processId))
+                             {
+                                var sessionInfo = new AudioSessionInfo
+                                {
+                                    ProcessId = processId,
+                                    ProcessName = process.ProcessName,
+                                    IconSource = GetIconForProcess(processId) // <-- Re-enable icon fetching
+                                    // IconSource = null // Set to null for now
+                                };
+                                sessions.Add(sessionInfo);
+                             }
+                        }
+                    }
+                    catch (ArgumentException argEx) // Process likely exited
+                    {
+                         Debug.WriteLine($"ArgumentException getting process {processId} (likely exited): {argEx.Message}");
+                    }
+                    catch (InvalidOperationException invEx) // Process likely exited or no access
+                    {
+                        Debug.WriteLine($"InvalidOperationException getting process {processId} (likely exited/no access): {invEx.Message}");
+                    }
+                    finally
+                    {
+                        process?.Dispose();
+                    }
                 }
-                catch (ArgumentException) { }
-                catch (Exception ex) { Debug.WriteLine($"Error getting process info: {ex.Message}"); }
+                catch (Exception ex)
+                {
+                    // Catch errors getting session info or PID
+                    Debug.WriteLine($"Error processing session index {i}: {ex.Message}");
+                }
+                finally
+                {
+                    session?.Dispose(); // Dispose session control COM object
+                }
             }
         }
         catch (Exception ex)
@@ -230,9 +306,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             selectedFormat = selectedItem.Content.ToString() ?? "MP3";
         }
-        string fileExtension = selectedFormat.Equals("WAV", StringComparison.OrdinalIgnoreCase) ? ".wav" : ".mp3";
-        // -------------------------
-
+        // --- Updated Extension Logic ---
+        string fileExtension = ".mp3"; // Default
+        if (selectedFormat.Equals("WAV", StringComparison.OrdinalIgnoreCase))
+        {
+            fileExtension = ".wav";
+        }
+        else if (selectedFormat.Equals("FLAC", StringComparison.OrdinalIgnoreCase))
+        {
+            fileExtension = ".flac";
+        }
+        // -----------------------------
         string tempFileName = $"recording_{selectedSessionInfo.ProcessName}_{DateTime.Now:yyyyMMdd_HHmmss}{fileExtension}";
         _outputFilePath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), tempFileName);
 
@@ -287,17 +371,24 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             _capture = new WasapiLoopbackCapture();
 
-            // --- Create appropriate writer --- 
-            if (selectedFormat.Equals("WAV", StringComparison.OrdinalIgnoreCase))
+            // Store the INTENDED format for potential post-processing
+            _recordingFormatForCurrentFile = selectedFormat;
+
+            // --- Create appropriate writer ---
+            _mp3Writer = null; // Reset writers
+            _wavWriter = null;
+
+            var sourceFormat = _capture.WaveFormat;
+
+            // If FLAC is selected, we initially write a WAV file
+            if (selectedFormat.Equals("WAV", StringComparison.OrdinalIgnoreCase) || selectedFormat.Equals("FLAC", StringComparison.OrdinalIgnoreCase))
             {
-                _wavWriter = new WaveFileWriter(_outputFilePath, _capture.WaveFormat);
-                _mp3Writer = null; // Ensure other writer is null
-                Debug.WriteLine("Using WaveFileWriter for WAV format.");
+                _wavWriter = new WaveFileWriter(_outputFilePath, sourceFormat);
+                Debug.WriteLine($"Using WaveFileWriter for {selectedFormat} format (will convert FLAC later if needed).");
             }
             else // Default to MP3
             {
-                _mp3Writer = new LameMP3FileWriter(_outputFilePath, _capture.WaveFormat, 192); 
-                _wavWriter = null; // Ensure other writer is null
+                _mp3Writer = new LameMP3FileWriter(_outputFilePath, sourceFormat, 192);
                 Debug.WriteLine("Using LameMP3FileWriter for MP3 format.");
             }
             // ---------------------------------
@@ -544,10 +635,21 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 Debug.WriteLine("Recording stopped successfully (temp file created).");
                 if (System.IO.File.Exists(tempFilePath))
                 {
-                    // --- Store format with the recording --- 
-                    string formatUsed = System.IO.Path.GetExtension(tempFilePath).TrimStart('.').ToUpperInvariant();
+                    string formatUsed = _recordingFormatForCurrentFile; // Use the intended final format
                     var newRecording = new RecordingInfo { FilePath = tempFilePath, RecordingFormat = formatUsed };
-                    // ---------------------------------------
+
+                    // --- Add post-processing step for FLAC ---
+                    if (formatUsed.Equals("FLAC", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // We need to run this asynchronously so it doesn't block the UI thread
+                        // after recording stops. The item will be added to the list immediately,
+                        // but the conversion happens in the background.
+                         Task.Run(() => ConvertToFlacAsync(newRecording));
+                         // The RecordingInfo added to the list will initially have the .wav path
+                         // ConvertToFlacAsync will update it if conversion succeeds.
+                    }
+                    // -----------------------------------------
+
                     FinishedRecordings.Add(newRecording);
                 }
                 else
@@ -582,6 +684,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
+        SaveHistory();
+
         _playbackMonitorTimer?.Stop();
         _playbackMonitorTimer = null;
 
@@ -632,6 +736,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 fileFilter = "WAV Audio File (*.wav)|*.wav";
                 defaultExt = ".wav";
             }
+            else if (selectedRecording.RecordingFormat.Equals("FLAC", StringComparison.OrdinalIgnoreCase)) // <-- Add FLAC filter case
+            {
+                 fileFilter = "FLAC Audio File (*.flac)|*.flac";
+                 defaultExt = ".flac";
+            }
             else // Default to MP3
             {
                  fileFilter = "MP3 Audio File (*.mp3)|*.mp3";
@@ -658,10 +767,50 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     System.IO.File.Move(selectedRecording.FilePath, destinationPath, true);
                     Debug.WriteLine($"Moved {selectedRecording.FilePath} to {destinationPath}");
 
+                    // --- Write ID3 Tags --- 
+                    try
+                    {
+                        // Read tag values from UI (ensure this runs on UI thread if needed, though likely okay here)
+                        string title = TitleTextBox.Text;
+                        string artist = ArtistTextBox.Text;
+                        string album = AlbumTextBox.Text;
+
+                        // Use TagLib# to write tags
+                        using (var tagFile = TagLib.File.Create(destinationPath))
+                        {
+                            if (!string.IsNullOrWhiteSpace(title))
+                                tagFile.Tag.Title = title;
+                            if (!string.IsNullOrWhiteSpace(artist))
+                                tagFile.Tag.Performers = new[] { artist }; // Performers is string[]
+                            if (!string.IsNullOrWhiteSpace(album))
+                                tagFile.Tag.Album = album;
+
+                            tagFile.Save();
+                             Debug.WriteLine("Successfully wrote tags to file.");
+                        }
+                    }
+                    catch (UnsupportedFormatException ex) 
+                    {
+                        Debug.WriteLine($"TagLib#: Format not supported for tagging: {destinationPath} - {ex.Message}");
+                        // Inform user? Or just skip silently? For now, log it.
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"Error writing tags to {destinationPath}: {ex.Message}");
+                        // Don't let tagging error stop the process, but log it.
+                        MessageBox.Show($"Recording saved, but an error occurred while writing tags:\n{ex.Message}", "Tagging Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    }
+                    // ----------------------
+
                     // Add to History (RecordingFormat is already set)
-                    var savedInfo = new RecordingInfo { FilePath = destinationPath, RecordingFormat = selectedRecording.RecordingFormat }; 
+                    var savedInfo = new RecordingInfo { FilePath = destinationPath, RecordingFormat = selectedRecording.RecordingFormat };
                     SavedRecordings.Add(savedInfo);
                     FinishedRecordings.Remove(selectedRecording);
+
+                    // Clear tag fields after successful save
+                    TitleTextBox.Text = string.Empty;
+                    ArtistTextBox.Text = string.Empty;
+                    AlbumTextBox.Text = string.Empty;
 
                     MessageBox.Show($"Recording saved successfully to:\n{destinationPath}", "Save Successful", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
@@ -716,6 +865,215 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     }
     // -----------------------------
 
+    // --- History Persistence Methods ---
+    private void LoadHistory()
+    {
+        Debug.WriteLine($"Attempting to load history from: {HistoryFilePath}");
+        try
+        {
+            // Ensure directory exists before trying to load
+            string? directoryPath = System.IO.Path.GetDirectoryName(HistoryFilePath);
+            if (directoryPath == null) return;
+
+            if (!System.IO.Directory.Exists(directoryPath))
+            {
+                // Directory doesn't exist, so no history to load.
+                 Debug.WriteLine("History directory does not exist. Skipping load.");
+                 return;
+            }
+
+            if (System.IO.File.Exists(HistoryFilePath))
+            {
+                string json = System.IO.File.ReadAllText(HistoryFilePath);
+                var loadedRecordings = JsonSerializer.Deserialize<List<RecordingInfo>>(json);
+
+                if (loadedRecordings != null)
+                {
+                    SavedRecordings.Clear(); // Clear existing before loading
+                    // --- Filter out entries where the file no longer exists --- 
+                    foreach (var recording in loadedRecordings)
+                    {
+                        if (System.IO.File.Exists(recording.FilePath))
+                        {
+                            SavedRecordings.Add(recording);
+                        }
+                        else
+                        {
+                            Debug.WriteLine($"History item file not found, removing from history: {recording.FilePath}");
+                        }
+                    }
+                    Debug.WriteLine($"Successfully loaded {SavedRecordings.Count} history items.");
+                }
+            }
+            else
+            {
+                Debug.WriteLine("History file does not exist. No history loaded.");
+            }
+        }
+        catch (System.IO.FileNotFoundException)
+        {
+            Debug.WriteLine("History file not found (FileNotFoundException). No history loaded.");
+        }
+        catch (JsonException ex)
+        {
+             Debug.WriteLine($"Error deserializing history file: {ex.Message}");
+             MessageBox.Show($"Could not load recording history. The history file might be corrupt.\n{ex.Message}", "History Load Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch (Exception ex)
+        {
+             Debug.WriteLine($"An unexpected error occurred loading history: {ex.Message}");
+             MessageBox.Show($"An unexpected error occurred while loading recording history.\n{ex.Message}", "History Load Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void SaveHistory()
+    {
+        Debug.WriteLine($"Attempting to save {SavedRecordings.Count} history items to: {HistoryFilePath}");
+        try
+        {
+             // Ensure the directory exists
+             string? directoryPath = System.IO.Path.GetDirectoryName(HistoryFilePath);
+             if(directoryPath != null)
+             {
+                 System.IO.Directory.CreateDirectory(directoryPath); // Creates the directory if it doesn't exist
+
+                 // Convert ObservableCollection to List for serialization
+                 List<RecordingInfo> listToSave = new List<RecordingInfo>(SavedRecordings);
+
+                 string json = JsonSerializer.Serialize(listToSave, new JsonSerializerOptions { WriteIndented = true });
+                 System.IO.File.WriteAllText(HistoryFilePath, json);
+                 Debug.WriteLine("History saved successfully.");
+             }
+             else
+             {
+                Debug.WriteLine("Could not determine directory path for history file. History not saved.");
+             }
+        }
+        catch (Exception ex)
+        {
+             Debug.WriteLine($"An unexpected error occurred saving history: {ex.Message}");
+             // Maybe inform the user, but avoid blocking exit if possible
+             // MessageBox.Show($"Could not save recording history.\n{ex.Message}", "History Save Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+    // ---------------------------------
+
+    // --- History View Button Handlers ---
+    private void HistoryListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        bool itemSelected = HistoryListView.SelectedItem != null;
+        PlayHistoryButton.IsEnabled = itemSelected;
+        OpenFolderButton.IsEnabled = itemSelected;
+        DeleteHistoryButton.IsEnabled = itemSelected;
+    }
+
+    private void PlayHistoryButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (HistoryListView.SelectedItem is RecordingInfo selectedRecording)
+        {
+            if (System.IO.File.Exists(selectedRecording.FilePath))
+            {
+                try
+                {
+                    // Use Process.Start to open the file with the default associated application
+                    Process.Start(new ProcessStartInfo(selectedRecording.FilePath) { UseShellExecute = true });
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Error trying to play file {selectedRecording.FilePath}: {ex.Message}");
+                    MessageBox.Show($"Could not open the file:\n{ex.Message}", "Playback Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+            else
+            {
+                MessageBox.Show("The audio file for this entry could not be found.", "File Not Found", MessageBoxButton.OK, MessageBoxImage.Warning);
+                // Optionally remove the item from history here if the file is missing
+                // SavedRecordings.Remove(selectedRecording);
+                // SaveHistory(); // If removing, save the change
+            }
+        }
+    }
+
+    private void OpenFolderButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (HistoryListView.SelectedItem is RecordingInfo selectedRecording)
+        {
+            if (System.IO.File.Exists(selectedRecording.FilePath))
+            {
+                try
+                {
+                    string? directoryPath = System.IO.Path.GetDirectoryName(selectedRecording.FilePath);
+                    if (!string.IsNullOrEmpty(directoryPath))
+                    {
+                        Process.Start(new ProcessStartInfo
+                        {
+                            FileName = directoryPath,
+                            UseShellExecute = true,
+                            Verb = "open"
+                        });
+                    }
+                    else
+                    {
+                         MessageBox.Show("Could not determine the folder path for this file.", "Error Opening Folder", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    }
+                }
+                catch (Exception ex)
+                {
+                     Debug.WriteLine($"Error trying to open folder for {selectedRecording.FilePath}: {ex.Message}");
+                     MessageBox.Show($"Could not open the folder:\n{ex.Message}", "Error Opening Folder", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+             else
+            {
+                MessageBox.Show("The audio file (and its folder) for this entry could not be found.", "File Not Found", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+    }
+
+    private void DeleteHistoryButton_Click(object sender, RoutedEventArgs e)
+    {
+         if (HistoryListView.SelectedItem is RecordingInfo selectedRecording)
+         {
+            var result = MessageBox.Show($"Are you sure you want to delete this history entry?\n\n{selectedRecording.FileName}\n\nThis will remove the entry from the list. Do you also want to delete the audio file from your disk?",
+                                         "Confirm Deletion", MessageBoxButton.YesNoCancel, MessageBoxImage.Warning);
+
+            if (result == MessageBoxResult.Cancel)
+            {
+                return; // User cancelled
+            }
+
+            bool deleteFile = (result == MessageBoxResult.Yes);
+
+            // 1. Remove from collection
+            SavedRecordings.Remove(selectedRecording);
+            SaveHistory(); // Save the updated history list
+
+            // 2. Optionally delete the file
+            if (deleteFile)
+            {
+                if (System.IO.File.Exists(selectedRecording.FilePath))
+                {
+                    try
+                    {
+                        System.IO.File.Delete(selectedRecording.FilePath);
+                        Debug.WriteLine($"Deleted audio file: {selectedRecording.FilePath}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"Error deleting file {selectedRecording.FilePath}: {ex.Message}");
+                        MessageBox.Show($"The history entry was removed, but the audio file could not be deleted:\n{ex.Message}", "File Deletion Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+                }
+                else
+                {
+                     Debug.WriteLine($"File not found for deletion: {selectedRecording.FilePath}");
+                     MessageBox.Show("The history entry was removed, but the audio file was already missing.", "File Not Found", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+            }
+         }
+    }
+    // ------------------------------------
+
     // --- INotifyPropertyChanged Implementation ---
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -724,4 +1082,118 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
     // -----------------------------------------
+
+    // --- Add FLAC Conversion Method ---
+    private async Task ConvertToFlacAsync(RecordingInfo recordingToConvert)
+    {
+        string originalWavPath = recordingToConvert.FilePath;
+        // Create the target .flac path by changing the extension
+        string flacPath = System.IO.Path.ChangeExtension(originalWavPath, ".flac"); 
+
+        Debug.WriteLine($"Attempting FLAC conversion: {originalWavPath} -> {flacPath}");
+
+        // Basic check if ffmpeg might exist (improve this as needed)
+        string ffmpegPath = "ffmpeg"; // Assumes ffmpeg is in PATH
+
+        try
+        {
+            // TODO: Check if ffmpeg exists before trying to run?
+            // Example: Run "ffmpeg -version" first?
+
+            ProcessStartInfo processInfo = new ProcessStartInfo
+            {
+                FileName = ffmpegPath,
+                Arguments = $"-i \"{originalWavPath}\" -c:a flac \"{flacPath}\"",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+
+            using (Process process = Process.Start(processInfo) ?? throw new InvalidOperationException("Failed to start ffmpeg process."))
+            {
+                string output = await process.StandardOutput.ReadToEndAsync();
+                string error = await process.StandardError.ReadToEndAsync();
+                await process.WaitForExitAsync();
+
+                if (process.ExitCode == 0 && System.IO.File.Exists(flacPath))
+                {
+                    Debug.WriteLine($"FFmpeg FLAC conversion successful. Output:\n{output}");
+                    // Update the RecordingInfo FilePath
+                    Application.Current.Dispatcher.Invoke(() => {
+                         recordingToConvert.FilePath = flacPath;
+                         // Now delete the original WAV file
+                         try { System.IO.File.Delete(originalWavPath); } catch (Exception ex) { Debug.WriteLine($"Failed to delete temp WAV after FLAC conversion: {ex.Message}"); }
+                    });
+                }
+                else
+                {
+                    Debug.WriteLine($"FFmpeg FLAC conversion failed. Exit Code: {process.ExitCode}\nOutput:\n{output}\nError:\n{error}");
+                    // Conversion failed, keep the WAV file and maybe notify user?
+                    // Reset the format in RecordingInfo back to WAV as FLAC failed?
+                    Application.Current.Dispatcher.Invoke(() => {
+                        MessageBox.Show($"Failed to convert recording to FLAC. The original WAV file has been kept.\n\nFFmpeg Error (see debug output for details):\n{error.Split('\n').FirstOrDefault()?.Trim()}", 
+                                        "FLAC Conversion Failed", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        // Optionally change format back if needed, but requires RecordingInfo to be mutable or replaced
+                        // recordingToConvert.RecordingFormat = "WAV"; 
+                    });
+                    // Keep the original WAV file path in RecordingInfo
+                }
+            }
+        }
+        catch (Win32Exception ex) when (ex.NativeErrorCode == 2) // NativeErrorCode 2: File Not Found
+        {
+             Debug.WriteLine("ffmpeg.exe not found. Please ensure it is installed and in your system's PATH.");
+             Application.Current.Dispatcher.Invoke(() => {
+                 MessageBox.Show("Could not find ffmpeg.exe. FLAC conversion requires FFmpeg to be installed and accessible via the system PATH.",
+                                 "FFmpeg Not Found", MessageBoxButton.OK, MessageBoxImage.Error);
+                // Keep the original WAV file path in RecordingInfo
+             });
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Error during FLAC conversion process: {ex.Message}");
+             Application.Current.Dispatcher.Invoke(() => {
+                 MessageBox.Show($"An unexpected error occurred during FLAC conversion:\n{ex.Message}",
+                                 "FLAC Conversion Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                // Keep the original WAV file path in RecordingInfo
+             });
+        }
+    }
+    // ---------------------------------
+
+    // --- Icon Helper Method ---
+    private ImageSource? GetIconForProcess(int processId)
+    {
+        try
+        {
+            Process process = Process.GetProcessById(processId);
+            string? exePath = process.MainModule?.FileName;
+
+            if (!string.IsNullOrEmpty(exePath) && System.IO.File.Exists(exePath))
+            {
+                // Use fully qualified name for Icon to avoid potential ambiguity
+                using (System.Drawing.Icon? icon = System.Drawing.Icon.ExtractAssociatedIcon(exePath))
+                {
+                    if (icon != null)
+                    {
+                        // Convert System.Drawing.Icon to WPF ImageSource
+                        BitmapSource bitmapSource = Imaging.CreateBitmapSourceFromHIcon(
+                            icon.Handle,
+                            Int32Rect.Empty,
+                            BitmapSizeOptions.FromEmptyOptions());
+                        bitmapSource.Freeze(); // Freeze for use on other threads if needed (good practice)
+                        return bitmapSource;
+                    }
+                }
+            }
+        }
+        catch (ArgumentException) { /* Process already exited */ }
+        catch (Win32Exception ex) { Debug.WriteLine($"Error getting process info/icon (Win32) for PID {processId}: {ex.Message}"); }
+        catch (InvalidOperationException ex) { Debug.WriteLine($"Error getting process info/icon (InvalidOp) for PID {processId}: {ex.Message}"); }
+        catch (Exception ex) { Debug.WriteLine($"Error getting icon for PID {processId}: {ex.Message}"); }
+
+        return null; // Return null if icon couldn't be obtained
+    }
+    // ------------------------
 }

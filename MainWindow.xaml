@@ -5,26 +5,26 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:Recorder"
         mc:Ignorable="d"
-        Title="Audio Recorder" Height="450" Width="700" ResizeMode="CanResizeWithGrip"
+        Title="Audio Recorder" Height="600" Width="900" ResizeMode="CanResizeWithGrip"
         x:Name="MainWindowInstance" MinHeight="350" MinWidth="500">
-    <Grid>
+    <Grid Background="{StaticResource PrimaryBackgroundBrush}">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto" MinWidth="150"/> <!-- Sidebar -->
+            <ColumnDefinition Width="Auto" MinWidth="150" MaxWidth="250"/> <!-- Sidebar -->
             <ColumnDefinition Width="*"/> <!-- Main Content -->
         </Grid.ColumnDefinitions>
 
         <!-- Sidebar Area (Column 0) - Navigation -->
-        <Border Grid.Column="0" Background="#FFE0E0E0" Margin="5">
-            <StackPanel Margin="10">
+        <Border Grid.Column="0" Background="{StaticResource SidebarBackgroundBrush}" Padding="5">
+            <StackPanel Margin="5">
                 <RadioButton x:Name="CaptureTabButton" Content="Capturing" GroupName="Navigation"
-                             IsChecked="True" Checked="CaptureTabButton_Checked" Style="{StaticResource {x:Type ToggleButton}}"/>
-                <RadioButton x:Name="HistoryTabButton" Content="History" GroupName="Navigation" Margin="0,10,0,0"
-                             Checked="HistoryTabButton_Checked" Style="{StaticResource {x:Type ToggleButton}}"/>
+                             IsChecked="True" Checked="CaptureTabButton_Checked" Style="{StaticResource SidebarTabRadioButton}"/>
+                <RadioButton x:Name="HistoryTabButton" Content="History" GroupName="Navigation" Margin="0,5,0,0"
+                             Checked="HistoryTabButton_Checked" Style="{StaticResource SidebarTabRadioButton}"/>
             </StackPanel>
         </Border>
 
         <!-- Main Content Area (Column 1) - Capturing View -->
-        <Grid x:Name="CapturingViewArea" Grid.Column="1" Margin="5" Visibility="Visible">
+        <Grid x:Name="CapturingViewArea" Grid.Column="1" Margin="10" Visibility="Visible">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/> <!-- Top Controls -->
                 <RowDefinition Height="*"/>    <!-- Main List Area -->
@@ -32,28 +32,43 @@
             </Grid.RowDefinitions>
 
             <!-- Top Controls (Row 0) -->
-            <Border Grid.Row="0" Background="#FFF0F0F0" Padding="10" Margin="0,0,0,5">
+            <Border Grid.Row="0" Background="{StaticResource SecondaryBackgroundBrush}" Padding="15" Margin="0,0,0,10" CornerRadius="3" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
                 <StackPanel Orientation="Vertical">
-                    <Label Content="Select Application to Record:" FontWeight="Bold"/>
-                    <DockPanel Margin="0,5,0,5">
-                        <Button x:Name="RefreshAppsButton" Content="Refresh" DockPanel.Dock="Right" Margin="5,0,0,0" Padding="5,0" Click="RefreshAppsButton_Click"/>
-                        <ComboBox x:Name="AppComboBox" VerticalAlignment="Center" SelectionChanged="AppComboBox_SelectionChanged"/>
-                    </DockPanel>
-                    <CheckBox x:Name="AutoStartCheckBox" Content="Auto record when app plays sound" Margin="0,5,0,5" Checked="AutoStartCheckBox_Checked" Unchecked="AutoStartCheckBox_Unchecked"/>
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
-                        <Button x:Name="StartButton" Content="Start Recording Selected App" Width="200" Height="30" Margin="0,5,5,5" Click="StartButton_Click"/>
-                        <Button x:Name="StopButton" Content="Stop Recording" Width="150" Height="30" Margin="5" Click="StopButton_Click" IsEnabled="False"/>
-                    </StackPanel>
-                    <!-- Audio Level Visualizer -->
-                    <DockPanel Margin="0,10,0,0">
-                        <Label Content="Level:" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                        <ProgressBar Minimum="0" Maximum="100" Value="{Binding CurrentPeakLevel, FallbackValue=0}" Height="10" VerticalAlignment="Center"/>
-                    </DockPanel>
-                </StackPanel>
+                     <Label Content="Select Application to Record:" FontWeight="Bold"/>
+                     <DockPanel Margin="0,5,0,5">
+                         <Button x:Name="RefreshAppsButton" Content="Refresh" DockPanel.Dock="Right" Margin="5,0,0,0" Padding="10,5" Click="RefreshAppsButton_Click" VerticalAlignment="Center"/>
+                         <ComboBox x:Name="AppComboBox" VerticalAlignment="Center" SelectionChanged="AppComboBox_SelectionChanged">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate DataType="{x:Type local:AudioSessionInfo}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Image Source="{Binding IconSource}" Width="16" Height="16" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                        <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                         </ComboBox>
+                     </DockPanel>
+                     <CheckBox x:Name="AutoStartCheckBox" Content="Auto record when app plays sound" Margin="0,5,0,10" Checked="AutoStartCheckBox_Checked" Unchecked="AutoStartCheckBox_Unchecked"/>
+                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                         <Button x:Name="StartButton" Content="Start Recording Selected App" Width="Auto" Margin="0,5,5,5" Click="StartButton_Click"/>
+                         <Button x:Name="StopButton" Content="Stop Recording" Width="Auto" Margin="5" Click="StopButton_Click" IsEnabled="False"/>
+                         <Label Content="Format:" VerticalAlignment="Center" Margin="15,0,5,0"/>
+                         <ComboBox x:Name="FormatComboBox" VerticalAlignment="Center" Width="80" SelectedIndex="0">
+                             <ComboBoxItem Content="MP3"/>
+                             <ComboBoxItem Content="WAV"/>
+                             <ComboBoxItem Content="FLAC"/>
+                         </ComboBox>
+                     </StackPanel>
+                     <!-- Audio Level Visualizer -->
+                     <DockPanel Margin="0,15,0,0">
+                         <Label Content="Level:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                         <ProgressBar Minimum="0" Maximum="100" Value="{Binding CurrentPeakLevel, FallbackValue=0}" VerticalAlignment="Center"/>
+                     </DockPanel>
+                 </StackPanel>
             </Border>
 
             <!-- Main List Area (Row 1) - ListView for Temporary Recordings -->
-            <ListView x:Name="RecordingsListView" Grid.Row="1" ItemsSource="{Binding FinishedRecordings}" Margin="0,0,0,5" BorderBrush="#FFCCCCCC" BorderThickness="1"
+            <ListView x:Name="RecordingsListView" Grid.Row="1" ItemsSource="{Binding FinishedRecordings}" Margin="0,0,0,10" 
                       SelectionChanged="RecordingsListView_SelectionChanged">
                 <ListView.View>
                     <GridView>
@@ -63,35 +78,46 @@
             </ListView>
 
             <!-- Bottom Controls (Row 2) -->
-             <Border Grid.Row="2" Background="#FFF0F0F0" Padding="10">
+             <Border Grid.Row="2" Background="{StaticResource SecondaryBackgroundBrush}" Padding="15" CornerRadius="3" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
                  <DockPanel LastChildFill="False">
-                     <!-- Left Side: Save and Format -->
+                     <!-- Left Side: Tag Input & Save Button -->
                      <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
-                         <Button x:Name="SaveButton" Content="Save Selected Recording..." Width="180" Height="30" Click="SaveButton_Click" IsEnabled="False"/>
-                         <Label Content="Format:" VerticalAlignment="Center" Margin="10,0,5,0"/>
-                         <ComboBox x:Name="FormatComboBox" VerticalAlignment="Center" Width="70" SelectedIndex="0">
-                             <ComboBoxItem Content="MP3"/>
-                             <ComboBoxItem Content="WAV"/>
-                         </ComboBox>
+                         <TextBlock Text="Title:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                         <TextBox x:Name="TitleTextBox" Width="100" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                         <TextBlock Text="Artist:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                         <TextBox x:Name="ArtistTextBox" Width="100" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                         <TextBlock Text="Album:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                         <TextBox x:Name="AlbumTextBox" Width="100" Margin="0,0,15,0" VerticalAlignment="Center"/>
+                         <Button x:Name="SaveButton" Content="Save Selected Recording..." Width="Auto" Click="SaveButton_Click" IsEnabled="False"/>
                      </StackPanel>
-
-                     <!-- Trimming Controls Removed -->
-
                  </DockPanel>
              </Border>
         </Grid>
 
         <!-- Main Content Area (Column 1) - History View -->
-        <Grid x:Name="HistoryViewArea" Grid.Column="1" Margin="5" Visibility="Collapsed">
-             <ListView x:Name="HistoryListView" ItemsSource="{Binding SavedRecordings}" Margin="0,0,0,5" BorderBrush="#FFCCCCCC" BorderThickness="1">
+        <Grid x:Name="HistoryViewArea" Grid.Column="1" Margin="10" Visibility="Collapsed">
+             <Grid.RowDefinitions>
+                 <RowDefinition Height="*"/> <!-- List -->
+                 <RowDefinition Height="Auto"/> <!-- Buttons -->
+             </Grid.RowDefinitions>
+
+             <ListView Grid.Row="0" x:Name="HistoryListView" ItemsSource="{Binding SavedRecordings}" Margin="0,0,0,10" 
+                       SelectionChanged="HistoryListView_SelectionChanged">
                  <ListView.View>
                      <GridView>
                          <GridViewColumn Header="Saved File Name" DisplayMemberBinding="{Binding FileName}" Width="Auto"/>
-                         <!-- TODO: Add columns for path, date, etc. -->
+                         <GridViewColumn Header="Format" DisplayMemberBinding="{Binding RecordingFormat}" Width="60"/>
+                         <GridViewColumn Header="File Path" DisplayMemberBinding="{Binding FilePath}" Width="300"/>
                      </GridView>
                  </ListView.View>
              </ListView>
-             <!-- TODO: Add buttons here later to play/delete history items -->
+             <Border Grid.Row="1" Background="{StaticResource SecondaryBackgroundBrush}" Padding="15" CornerRadius="3" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="PlayHistoryButton" Content="Play" Width="Auto" Margin="0,0,5,0" Click="PlayHistoryButton_Click" IsEnabled="False"/>
+                    <Button x:Name="OpenFolderButton" Content="Open Folder" Width="Auto" Margin="0,0,5,0" Click="OpenFolderButton_Click" IsEnabled="False"/>
+                    <Button x:Name="DeleteHistoryButton" Content="Delete" Width="Auto" Margin="0,0,0,0" Click="DeleteHistoryButton_Click" IsEnabled="False"/>
+                 </StackPanel>
+             </Border>
         </Grid>
 
     </Grid>

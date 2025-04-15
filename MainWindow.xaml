@@ -55,19 +55,26 @@
                         <Button x:Name="StartButton" Content="Start" DockPanel.Dock="Right" Margin="10,0,0,0" Padding="15,7" Click="StartButton_Click" Style="{StaticResource StartButtonStyle}"/>
                         <!-- <Button x:Name="StopButton" Content="Stop" DockPanel.Dock="Right" Margin="5,0,0,0" Padding="15,7" Click="StopButton_Click" IsEnabled="False"/> -->
                         <!-- Removed Stop button from here, assuming Start toggles -->
-                        <ComboBox x:Name="AppComboBox" VerticalAlignment="Center" MinWidth="200" SelectionChanged="AppComboBox_SelectionChanged" 
-                                  DockPanel.Dock="Left" Margin="0,0,10,0">
-                           <ComboBox.ItemTemplate>
-                               <DataTemplate DataType="{x:Type local:AudioSessionInfo}">
-                                   <StackPanel Orientation="Horizontal">
-                                       <!-- Use a placeholder or bind to actual icon -->
-                                       <Image Source="{Binding IconSource, FallbackValue='Assets/ie_placeholder.png'}" Width="16" Height="16" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                                       <TextBlock Text="{Binding DisplayName, FallbackValue='IEXPLORE'}" VerticalAlignment="Center"/>
-                                   </StackPanel>
-                               </DataTemplate>
-                           </ComboBox.ItemTemplate>
-                        </ComboBox>
-                         <!-- Removed Refresh button and AutoStart checkbox for simplicity based on image -->
+
+                        <!-- Container for ComboBox and CheckBox -->
+                        <StackPanel DockPanel.Dock="Left" Margin="0,0,10,0">
+                            <ComboBox x:Name="AppComboBox" VerticalAlignment="Center" MinWidth="200" SelectionChanged="AppComboBox_SelectionChanged">
+                               <ComboBox.ItemTemplate>
+                                   <DataTemplate DataType="{x:Type local:AudioSessionInfo}">
+                                       <StackPanel Orientation="Horizontal">
+                                           <!-- Use a placeholder or bind to actual icon -->
+                                           <Image Source="{Binding IconSource, FallbackValue='Assets/ie_placeholder.png'}" Width="16" Height="16" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                           <TextBlock Text="{Binding DisplayName, FallbackValue='IEXPLORE'}" VerticalAlignment="Center"/>
+                                       </StackPanel>
+                                   </DataTemplate>
+                               </ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <CheckBox x:Name="AutoStartCheckBox" Content="Auto record when app plays sound" 
+                                      Checked="AutoStartCheckBox_Checked" Unchecked="AutoStartCheckBox_Unchecked"
+                                      Margin="0,8,0,0" /> 
+                                      <!-- IsEnabled is handled in code-behind -->
+                        </StackPanel>
+                         <!-- Removed Refresh button for simplicity based on image -->
                     </DockPanel>
                 </Border>
 
@@ -89,8 +96,6 @@
                         <ListView.View>
                             <GridView ColumnHeaderContainerStyle="{StaticResource {x:Type GridViewColumnHeader}}">
                                 <GridViewColumn Header="Name" DisplayMemberBinding="{Binding FileName}" Width="250"/>
-                                <GridViewColumn Header="Artist" DisplayMemberBinding="{Binding ArtistTag}" Width="150"/>
-                                <GridViewColumn Header="Album" DisplayMemberBinding="{Binding AlbumTag}" Width="150"/>
                                 <GridViewColumn Header="Duration" DisplayMemberBinding="{Binding DurationString}" Width="100"/>
                                 <GridViewColumn Header="Date added" DisplayMemberBinding="{Binding DateAddedString}" Width="150"/>
                                 <!-- Add Bindings for Artist, Album, Duration, Date Added later -->
@@ -120,7 +125,6 @@
                  <Border Grid.Row="2" Background="{StaticResource SecondaryBackgroundBrush}" Padding="15" BorderThickness="0,1,0,0" BorderBrush="{StaticResource BorderBrush}">
                      <DockPanel>
                          <Button x:Name="SaveButton" Content="Save" DockPanel.Dock="Right" Width="80" Click="SaveButton_Click" IsEnabled="{Binding ElementName=RecordingsListView, Path=SelectedItems.Count}" Padding="10,7"/>
-                         <CheckBox x:Name="MergeCheckBox" Content="Merge all into one file" VerticalAlignment="Center" DockPanel.Dock="Right" Margin="0,0,15,0"/>
 
                          <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
                              <Label Content="Format:" VerticalAlignment="Center" Margin="0,0,5,0"/>
@@ -166,7 +170,7 @@
 
         <!-- Hidden controls for backward compatibility with existing code -->
         <Grid Visibility="Collapsed">
-            <CheckBox x:Name="AutoStartCheckBox" Content="Auto record when app plays sound" Checked="AutoStartCheckBox_Checked" Unchecked="AutoStartCheckBox_Unchecked"/>
+            <!-- <CheckBox x:Name="AutoStartCheckBox" Content="Auto record when app plays sound" Checked="AutoStartCheckBox_Checked" Unchecked="AutoStartCheckBox_Unchecked"/> -->
             <Button x:Name="RefreshAppsButton" Content="Refresh" Click="RefreshAppsButton_Click"/>
             <Button x:Name="StopButton" Content="Stop Recording" Click="StopButton_Click" IsEnabled="False"/>
             <TextBox x:Name="TitleTextBox"/>

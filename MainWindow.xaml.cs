@@ -853,12 +853,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 string targetExt = System.IO.Path.GetExtension(targetFilePath).ToLowerInvariant();
 
                 // Check if merge is requested
-                if (MergeCheckBox.IsChecked == true && RecordingsListView.Items.Count > 1)
-                {
-                    MessageBox.Show("Merging files functionality will be implemented in a future update.", 
-                                    "Feature Not Available", MessageBoxButton.OK, MessageBoxImage.Information);
-                    return;
-                }
+                // if (MergeCheckBox.IsChecked == true && RecordingsListView.Items.Count > 1) // Merge CheckBox Removed
+                // {
+                //     MessageBox.Show("Merging files functionality will be implemented in a future update.", 
+                //                     "Feature Not Available", MessageBoxButton.OK, MessageBoxImage.Information);
+                //     return;
+                // }
 
                 // Get metadata - use existing if available, otherwise default to empty
                 string title = selectedRecording.ArtistTag ?? string.Empty;
@@ -1021,10 +1021,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         
         // MergeCheckbox should be disabled during recording
-        if (MergeCheckBox != null)
-        {
-            MergeCheckBox.IsEnabled = controlsEnabled;
-        }
+        // if (MergeCheckBox != null) // Merge CheckBox Removed
+        // {
+        //     MergeCheckBox.IsEnabled = controlsEnabled;
+        // }
         
         // Save button should be enabled only when a recording is selected and not recording
         if (SaveButton != null) 

@@ -58,20 +58,23 @@
 
                         <!-- Container for ComboBox and CheckBox -->
                         <StackPanel DockPanel.Dock="Left" Margin="0,0,10,0">
-                            <ComboBox x:Name="AppComboBox" VerticalAlignment="Center" MinWidth="200" SelectionChanged="AppComboBox_SelectionChanged">
-                               <ComboBox.ItemTemplate>
-                                   <DataTemplate DataType="{x:Type local:AudioSessionInfo}">
-                                       <StackPanel Orientation="Horizontal">
-                                           <!-- Use a placeholder or bind to actual icon -->
-                                           <Image Source="{Binding IconSource, FallbackValue='Assets/ie_placeholder.png'}" Width="16" Height="16" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                                           <TextBlock Text="{Binding DisplayName, FallbackValue='IEXPLORE'}" VerticalAlignment="Center"/>
-                                       </StackPanel>
-                                   </DataTemplate>
-                               </ComboBox.ItemTemplate>
-                            </ComboBox>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <ComboBox x:Name="AppComboBox" VerticalAlignment="Center" MinWidth="200" SelectionChanged="AppComboBox_SelectionChanged">
+                                   <ComboBox.ItemTemplate>
+                                       <DataTemplate DataType="{x:Type local:AudioSessionInfo}">
+                                           <StackPanel Orientation="Horizontal">
+                                               <!-- Use a placeholder or bind to actual icon -->
+                                               <Image Source="{Binding IconSource, FallbackValue='Assets/ie_placeholder.png'}" Width="16" Height="16" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                               <TextBlock Text="{Binding DisplayName, FallbackValue='IEXPLORE'}" VerticalAlignment="Center"/>
+                                           </StackPanel>
+                                       </DataTemplate>
+                                   </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <Button Content="Refresh" Click="RefreshAppsButton_Click" Margin="8,0,0,0" Padding="8,4" ToolTip="Refresh the list of audio applications"/>
+                            </StackPanel>
                             <CheckBox x:Name="AutoStartCheckBox" Content="Auto record when app plays sound" 
                                       Checked="AutoStartCheckBox_Checked" Unchecked="AutoStartCheckBox_Unchecked"
-                                      Margin="0,8,0,0" /> 
+                                      Margin="0,0,0,0" /> 
                                       <!-- IsEnabled is handled in code-behind -->
                         </StackPanel>
                          <!-- Removed Refresh button for simplicity based on image -->
@@ -124,7 +127,11 @@
                 <!-- Bottom Controls (Row 2) - Format, Merge, Save -->
                  <Border Grid.Row="2" Background="{StaticResource SecondaryBackgroundBrush}" Padding="15" BorderThickness="0,1,0,0" BorderBrush="{StaticResource BorderBrush}">
                      <DockPanel>
-                         <Button x:Name="SaveButton" Content="Save" DockPanel.Dock="Right" Width="80" Click="SaveButton_Click" IsEnabled="{Binding ElementName=RecordingsListView, Path=SelectedItems.Count}" Padding="10,7"/>
+                         <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
+                             <Button x:Name="PlayRecordingButton" Content="Play" Width="80" Margin="0,0,5,0" Click="PlayRecordingButton_Click" IsEnabled="{Binding ElementName=RecordingsListView, Path=SelectedItems.Count}" Padding="10,7"/>
+                             <Button x:Name="DeleteRecordingButton" Content="Delete" Width="80" Margin="0,0,5,0" Click="DeleteRecordingButton_Click" IsEnabled="{Binding ElementName=RecordingsListView, Path=SelectedItems.Count}" Padding="10,7"/>
+                             <Button x:Name="SaveButton" Content="Save" Width="80" Click="SaveButton_Click" IsEnabled="{Binding ElementName=RecordingsListView, Path=SelectedItems.Count}" Padding="10,7"/>
+                         </StackPanel>
 
                          <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
                              <Label Content="Format:" VerticalAlignment="Center" Margin="0,0,5,0"/>

@@ -36,7 +36,7 @@ public class AudioSessionInfo
 {
     public int ProcessId { get; set; }
     public string? ProcessName { get; set; }
-    public string DisplayName => $"{ProcessName ?? "Unknown"} (PID: {ProcessId})";
+    public string DisplayName => ProcessName ?? "Unknown";
     public ImageSource? IconSource { get; set; } // Property to hold the icon
 }
 
@@ -170,6 +170,22 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             {
                 _currentPeakLevel = clampedValue;
                 OnPropertyChanged(); 
+            }
+        }
+    }
+    // -------------------------------------
+
+    // --- Property for Play/Pause Button ---
+    private bool _isPlaying;
+    public bool IsPlaying
+    {
+        get => _isPlaying;
+        set
+        {
+            if (_isPlaying != value)
+            {
+                _isPlaying = value;
+                OnPropertyChanged();
             }
         }
     }
@@ -397,17 +413,21 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             selectedFormat = selectedItem.Content.ToString() ?? "MP3";
         }
+        
         // --- Updated Extension Logic ---
         string fileExtension = ".mp3"; // Default
-        if (selectedFormat.Equals("WAV", StringComparison.OrdinalIgnoreCase))
+        
+        // FLAC requires special handling - we initially record as WAV then convert
+        if (selectedFormat.Equals("FLAC", StringComparison.OrdinalIgnoreCase))
+        {
+            fileExtension = ".wav";  // Use .wav extension for initial recording
+        }
+        else if (selectedFormat.Equals("WAV", StringComparison.OrdinalIgnoreCase))
         {
             fileExtension = ".wav";
         }
-        else if (selectedFormat.Equals("FLAC", StringComparison.OrdinalIgnoreCase))
-        {
-            fileExtension = ".flac";
-        }
         // -----------------------------
+        
         string tempFileName = $"recording_{selectedSessionInfo.ProcessName}_{DateTime.Now:yyyyMMdd_HHmmss}{fileExtension}";
         _outputFilePath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), tempFileName);
 
@@ -471,8 +491,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
             var sourceFormat = _capture.WaveFormat;
 
-            // If FLAC is selected, we initially write a WAV file
-            if (selectedFormat.Equals("WAV", StringComparison.OrdinalIgnoreCase) || selectedFormat.Equals("FLAC", StringComparison.OrdinalIgnoreCase))
+            // Handle WAV and FLAC formats
+            if (selectedFormat.Equals("WAV", StringComparison.OrdinalIgnoreCase) || 
+                selectedFormat.Equals("FLAC", StringComparison.OrdinalIgnoreCase))
             {
                 _wavWriter = new WaveFileWriter(_outputFilePath, sourceFormat);
                 Debug.WriteLine($"Using WaveFileWriter for {selectedFormat} format (will convert FLAC later if needed).");
@@ -789,6 +810,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             UnmuteOtherApplications();
             CleanupRecording();
         }
+        
+        StopPlayback();
     }
 
     private void StartButton_Click(object sender, RoutedEventArgs e)
@@ -1384,4 +1407,149 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         return null; // Return null if icon couldn't be obtained
     }
     // ------------------------
+
+    private void DeleteRecordingButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (RecordingsListView.SelectedItem is RecordingInfo selectedRecording)
+        {
+            var result = MessageBox.Show($"Are you sure you want to delete this recording?\n\n{selectedRecording.FileName}", 
+                          "Confirm Deletion", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            
+            if (result == MessageBoxResult.Yes)
+            {
+                // Remove from the collection
+                FinishedRecordings.Remove(selectedRecording);
+                
+                // Delete the actual file if it exists
+                if (System.IO.File.Exists(selectedRecording.FilePath))
+                {
+                    try
+                    {
+                        System.IO.File.Delete(selectedRecording.FilePath);
+                        Debug.WriteLine($"Deleted recording file: {selectedRecording.FilePath}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"Error deleting file {selectedRecording.FilePath}: {ex.Message}");
+                        MessageBox.Show($"The recording was removed from the list, but the file could not be deleted:\n{ex.Message}", 
+                                        "File Deletion Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+                }
+            }
+        }
+    }
+
+    // Audio playback member variables
+    private WaveOutEvent? _waveOutDevice;
+    private AudioFileReader? _audioFileReader;
+    private RecordingInfo? _currentlyPlayingRecording;
+
+    private void PlayRecordingButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (RecordingsListView.SelectedItem is RecordingInfo selectedRecording)
+        {
+            if (IsPlaying)
+            {
+                // Pause the current playback
+                if (_waveOutDevice != null && _waveOutDevice.PlaybackState == PlaybackState.Playing)
+                {
+                    _waveOutDevice.Pause();
+                    IsPlaying = false;
+                    PlayRecordingButton.Content = "Play";
+                    Debug.WriteLine("Playback paused");
+                }
+            }
+            else
+            {
+                if (_currentlyPlayingRecording != selectedRecording)
+                {
+                    // A new recording is selected, stop any current playback
+                    StopPlayback();
+                    
+                    // Start playback of the new recording
+                    try
+                    {
+                        string filePath = selectedRecording.FilePath;
+                        
+                        if (System.IO.File.Exists(filePath))
+                        {
+                            // Create file reader
+                            _audioFileReader = new AudioFileReader(filePath);
+                            _waveOutDevice = new WaveOutEvent();
+                            _waveOutDevice.PlaybackStopped += OnPlaybackStopped;
+                            _waveOutDevice.Init(_audioFileReader);
+                            _waveOutDevice.Play();
+                            
+                            _currentlyPlayingRecording = selectedRecording;
+                            IsPlaying = true;
+                            PlayRecordingButton.Content = "Pause";
+                            Debug.WriteLine($"Started playback of: {filePath}");
+                        }
+                        else
+                        {
+                            MessageBox.Show("The recording file could not be found.", "File Not Found", 
+                                           MessageBoxButton.OK, MessageBoxImage.Warning);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"Error playing file {selectedRecording.FilePath}: {ex.Message}");
+                        MessageBox.Show($"Could not play the recording:\n{ex.Message}", 
+                                       "Playback Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                        StopPlayback();
+                    }
+                }
+                else
+                {
+                    // Resume the current playback
+                    if (_waveOutDevice != null && _waveOutDevice.PlaybackState == PlaybackState.Paused)
+                    {
+                        _waveOutDevice.Play();
+                        IsPlaying = true;
+                        PlayRecordingButton.Content = "Pause";
+                        Debug.WriteLine("Playback resumed");
+                    }
+                }
+            }
+        }
+    }
+
+    private void OnPlaybackStopped(object? sender, StoppedEventArgs e)
+    {
+        // Clean up when playback completes or is manually stopped
+        if (e.Exception != null)
+        {
+            Debug.WriteLine($"Playback stopped with error: {e.Exception.Message}");
+        }
+        
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            StopPlayback();
+        });
+    }
+
+    private void StopPlayback()
+    {
+        // Clean up playback resources
+        if (_waveOutDevice != null)
+        {
+            if (_waveOutDevice.PlaybackState == PlaybackState.Playing || 
+                _waveOutDevice.PlaybackState == PlaybackState.Paused)
+            {
+                _waveOutDevice.Stop();
+            }
+            _waveOutDevice.Dispose();
+            _waveOutDevice = null;
+        }
+        
+        if (_audioFileReader != null)
+        {
+            _audioFileReader.Dispose();
+            _audioFileReader = null;
+        }
+        
+        _currentlyPlayingRecording = null;
+        IsPlaying = false;
+        Debug.WriteLine("Playback stopped and resources cleaned up");
+    }
 }
